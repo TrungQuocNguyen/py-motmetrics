@@ -140,9 +140,9 @@ class MOTAccumulator(object):
         if frameid is None:            
             assert self.auto_id, 'auto-id is not enabled'
             if len(self._indices) > 0:
-                frameid = self._indices[-1][0] + 1
+                frameid = self._indices[-1][0] + 1 #frameid = 1 at the next call of update 
             else:
-                frameid = 0
+                frameid = 0 #frameid = 0 at first call of update 
         else:
             assert not self.auto_id, 'Cannot provide frame id when auto-id is enabled'
         
@@ -170,28 +170,28 @@ class MOTAccumulator(object):
         if oids.size * hids.size > 0:    
             # 1. Try to re-establish tracks from previous correspondences
             for i in range(oids.shape[0]):
-                if not oids[i] in self.m:
-                    continue
+                if not oids[i] in self.m: #if idx of object correspond to some hypothesis in previous frame
+                    continue #if index of object does not correspond to any hypothesis in previous frame( new object or false negative in previous frame), then continue
 
-                hprev = self.m[oids[i]]                    
-                j, = np.where(hids==hprev)  
-                if j.shape[0] == 0:
-                    continue
+                hprev = self.m[oids[i]]#then get index of that previous hypothesis.                
+                j, = np.where(hids==hprev)  #position of that index in the new hypothesis list 
+                if j.shape[0] == 0:# if index of that hypothesis in previous frame does not exist in current hypothesis list (false negative in current frame)
+                    continue 
                 j = j[0]
 
                 if np.isfinite(dists[i,j]):
-                    oids[i] = ma.masked
+                    oids[i] = ma.masked #masked the object that already MATCH, so that we can set it to nan in 2nd step 
                     hids[j] = ma.masked
                     self.m[oids.data[i]] = hids.data[j]
                     
                     self._indices.append((frameid, next(eid)))
-                    self._events.append(['MATCH', oids.data[i], hids.data[j], dists[i, j]])
+                    self._events.append(['MATCH', oids.data[i], hids.data[j], dists[i, j]]) #re-establish the matched pairs in previous frame
 
-            # 2. Try to remaining objects/hypotheses
+            # 2. Try to correspond remaining objects/hypotheses after re-establish ( objects already match above are ignore by setting dist to np.nan)
             dists[oids.mask, :] = np.nan
             dists[:, hids.mask] = np.nan
         
-            rids, cids = linear_sum_assignment(dists)
+            rids, cids = linear_sum_assignment(dists) #only return rows and columns indices that not np.nan
 
             for i, j in zip(rids, cids):                
                 if not np.isfinite(dists[i,j]):
@@ -199,9 +199,9 @@ class MOTAccumulator(object):
                 
                 o = oids[i]
                 h = hids.data[j]
-                is_switch = o in self.m and \
-                            self.m[o] != h and \
-                            abs(frameid - self.last_occurrence[o]) <= self.max_switch_time
+                is_switch = o in self.m and \ #if object id used to correspond to another id not the current one
+                            self.m[o] != h and \#
+                            abs(frameid - self.last_occurrence[o]) <= self.max_switch_time# Then that is a switch in id of hypothesis
                 cat = 'SWITCH' if is_switch else 'MATCH'
                 self._indices.append((frameid, next(eid)))
                 self._events.append([cat, oids.data[i], hids.data[j], dists[i, j]])
@@ -210,12 +210,12 @@ class MOTAccumulator(object):
                 self.m[o] = h
 
         # 3. All remaining objects are missed
-        for o in oids[~oids.mask]:
+        for o in oids[~oids.mask]: # if there are some object which is unmasked 
             self._indices.append((frameid, next(eid)))
-            self._events.append(['MISS', o, np.nan, np.nan])
+            self._events.append(['MISS', o, np.nan, np.nan]) #then that object is not detected by tracker (MISS)
         
         # 4. All remaining hypotheses are false alarms
-        for h in hids[~hids.mask]:
+        for h in hids[~hids.mask]: #if there are some hypothesis which is unmasked
             self._indices.append((frameid, next(eid)))
             self._events.append(['FP', np.nan, h, np.nan])
 
